@@ -1400,7 +1400,7 @@ namespace ngp {
 		}
 	}
 
-	__global__ void shade_kernel_nerf(
+	__global__ void shade_kernel_nerf(//볼륨가져오기
 		const uint32_t n_elements,
 		bool gbuffer_hard_edges,
 		mat4x3 camera_matrix,
@@ -2056,6 +2056,7 @@ namespace ngp {
 				m_nerf.training.linear_colors,
 				render_buffer.frame_buffer,
 				render_buffer.depth_buffer
+
 			);
 			return;
 		}
@@ -3257,6 +3258,7 @@ namespace ngp {
 	__device__ float4* dev_input;
 	__device__ unsigned char* dev_output;
 	//float4 volume[256][256][256];
+	__device__ int IndexPosDefrom = 0;
 
 	cudaTextureObject_t voltexObj;
 	cudaTextureObject_t voltexOutObj;
@@ -6164,6 +6166,20 @@ namespace ngp {
 					pOutGrid[z * 256 * 256 + y * 256 + x].y = den.y;
 					pOutGrid[z * 256 * 256 + y * 256 + x].z = den.z;
 					pOutGrid[z * 256 * 256 + y * 256 + x].w = den.w;
+
+					pOutGrid[IndexPosDefrom - 1].x = 255.0;
+					pOutGrid[IndexPosDefrom - 1].y = 0.0;
+					pOutGrid[IndexPosDefrom - 1].z = 0.0;
+					pOutGrid[IndexPosDefrom - 1].w = 1.0;
+					pOutGrid[IndexPosDefrom].x = 255.0;
+					pOutGrid[IndexPosDefrom].y = 0.0;
+					pOutGrid[IndexPosDefrom].z = 0.0;
+					pOutGrid[IndexPosDefrom].w = 1.0;
+					pOutGrid[IndexPosDefrom + 1].x = 255.0;
+					pOutGrid[IndexPosDefrom + 1].y = 0.0;
+					pOutGrid[IndexPosDefrom + 1].z = 0.0;
+					pOutGrid[IndexPosDefrom + 1].w = 1.0;
+
 					//printf("%2f, %2f, %2f,%2f\n", pOutGrid[z * 256 * 256 + y * 256 + x].x, pOutGrid[z * 256 * 256 + y * 256 + x].y, pOutGrid[z * 256 * 256 + y * 256 + x].z, pOutGrid[z * 256 * 256 + y * 256 + x].w);
 					//pOutGrid[z * 256 * 256 + y * 256 + x].a() = den;//outgird에 1차원으로 표현한 배열에 해당 값을 할당
 				}
@@ -6217,13 +6233,17 @@ namespace ngp {
 			retval.y = retval.y * PBD_SCALE;
 			retval.z = retval.z * PBD_SCALE;
 
+			retval.x = floor(retval.x);
+			retval.y = floor(retval.y);
+			retval.z = floor(retval.z);
+
 			//printf("retval : %f, %f, %f\n", retval.x, retval.y, retval.z);
 			return retval;
 		}
 
 		else if (device_mode == 2) { //Wave
-			float delta = sinf(float(z * 0.03F) + mytime[0]);
-			vec3 dis = vec3(delta * 20, 0, 0);
+			float delta = sinf(float(z * 0.03f + mytime[0] * 0.1f));
+			vec3 dis = vec3(floor(delta * 20), 0, 0);
 			vec3 retval = pos + dis; // 258 258 152
 			//printf("%d\n", ttime);
 			//256, 256, 150
@@ -6262,6 +6282,22 @@ namespace ngp {
 			retval.y = center.y + dy;
 			retval.z = pos.z;
 			return retval;
+		}
+		else if (device_mode == 5) { //Picking
+			int deformIndexX = IndexPosDefrom % 256;
+			int deformIndexY = (IndexPosDefrom / 256) % 256;
+			int deformIndexZ = IndexPosDefrom / (256 * 256);
+
+
+			if (pos.x <= deformIndexX + 3 && pos.x >= deformIndexX - 3 && pos.y <= deformIndexY + 3 && pos.y >= deformIndexY - 3 && pos.z <= deformIndexZ + 15 && pos.z >= deformIndexZ - 15 && deformIndexX != 0 && deformIndexY != 0 && deformIndexZ != 0) {
+
+				//float delta = (z +20);
+				vec3 dis = vec3(0, 0, 5);
+				vec3 retval = pos + dis;
+
+				return retval;
+			}
+			return pos;
 		}
 	}
 
@@ -6324,9 +6360,9 @@ namespace ngp {
 		//ty = threadIdx.y / 4;
 		//tz = threadIdx.z / 4;
 
-		tz = threadIdx.x / 64 * 64;
-		ty = (threadIdx.x / 64) % 64;
-		tx = threadIdx.x % 64;
+		tz = threadIdx.x / (4 * 4);
+		ty = (threadIdx.x / 4) % 4;
+		tx = threadIdx.x % 4;
 
 
 		int forDebug = 0; // (x == 1 && y == 1 && z == 0) ? 1 : 0;
@@ -6336,8 +6372,46 @@ namespace ngp {
 		SampleTetrahedron(buf[tz][ty][tx], buf[tz][ty + 1][tx], buf[tz + 1][ty + 1][tx], buf[tz][ty + 1][tx + 1], input, voltexObj, forDebug);
 		SampleTetrahedron(buf[tz + 1][ty + 1][tx], buf[tz + 1][ty][tx + 1], buf[tz][ty + 1][tx + 1], buf[tz][ty][tx], input, voltexObj, forDebug);
 
+
+
+
 	}
 
+	__global__ void raycastKernel(vec3 rayOrigin, vec3 rayDirection, float4* volume) {
+		//int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+		// Step size for ray marching
+		float step = 0.1f;
+		float t = 0.0f;
+
+		// Traverse through the volume along the ray
+		for (int i = 0; i < 10000; ++i) {
+			vec3 currentPos;
+
+
+			currentPos.x = rayOrigin.x + t * rayDirection.x;
+			currentPos.y = rayOrigin.y + t * rayDirection.y;
+			currentPos.z = rayOrigin.z + t * rayDirection.z;
+			int z = currentPos.z * 64 + 112;
+			int x = currentPos.x * 64 + 112;
+			int y = currentPos.y * 64 + 112;
+			if (x >= 0 && x < 256 && y >= 0 && y < 256 && z >= 0 && z < 256) {
+				int index = x + 256 * (y + 256 * z);
+				float alpha = volume[index].w;  // Use alpha value
+
+				if (alpha > 0) {  // Assuming volumeData contains alpha values
+					//int x = (index % 256) * 2;
+					//int y = ((index % 256) / 256) * 2;
+					//int z = (index / (256 * 256)) * 2;
+					IndexPosDefrom = index;//x + 256 * (y + 256 * z);
+					return;
+				}
+			}
+
+			t += step;
+		}
+
+	}
 	__global__ void brightenImageKernel(unsigned char* outImage, cudaTextureObject_t voltexObj, float zoom)
 	{
 		//printf("brightenImage test\n");	
@@ -6395,7 +6469,7 @@ namespace ngp {
 			//float Ia = 0.4, Id = 0.6, Is = 0.7;
 			//color = CalcLight(sample, voltexObj, color, Ia, Id, Is);
 
-			rsum = 255.0;// rsum + alpha * color.x * (1 - asum);
+			rsum = rsum + alpha * color.x * (1 - asum);
 			gsum = gsum + alpha * color.y * (1 - asum);
 			bsum = bsum + alpha * color.z * (1 - asum);
 			asum = asum + alpha * (1 - asum);
@@ -6408,6 +6482,7 @@ namespace ngp {
 		outImage[offset] = __min((int)(rsum), 255);
 		outImage[offset + 1] = __min((int)(gsum), 255);
 		outImage[offset + 2] = __min((int)(bsum), 255);
+
 	}
 	cudaError_t Testbed::addWithCuda(unsigned char* out)
 	{
@@ -6455,6 +6530,7 @@ namespace ngp {
 		elapsed_time_ms = 0;
 		cudaEventElapsedTime(&elapsed_time_ms, start, stop);
 		//printf("1.resampling time: %8.2f ms\n", elapsed_time_ms);
+
 
 		cudaExtent OutVolumeExtent = { VOLX,VOLY,VOLZ };
 		cudaMemcpy3DParms param = { 0 };
@@ -6713,7 +6789,7 @@ namespace ngp {
 	int Testbed::cudamain(float eye[3])
 	{
 		static float t = 0;
-		t += 4.0;//시간측정
+		t += 1.0;//시간측정
 		vecsm heye(eye[0], eye[1], eye[2]);//host 변수
 
 		cudaMemcpyToSymbol(mytime, &t, sizeof(float));
@@ -6798,36 +6874,71 @@ namespace ngp {
 		else if (option == 4) {
 			printf("Twist Mode\n");
 		}
+		else if (option == 5) {
+			printf("Picking Mode\n");
+		}
 		else printf("Normal Mode\n");
 	}
 
-	// 카메라 설정
-	glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
-	glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
-	glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+	vec2 windowToTextureCoord(const vec2& windowCoord) {
 
-	glm::vec2 windowToNDC(const glm::vec2& windowCoord, int windowWidth, int windowHeight) {
-		float x = 2.0f * (windowCoord.x / windowWidth) - 1.0f;
-		float y = 1.0f - 2.0f * (windowCoord.y / windowHeight);
-		return glm::vec2(x, y);
+		float x = (2.0f * (windowCoord.x)) / 512 - 1.0f;
+		x -= 1;
+		float y = 1.0f - (2.0f * (windowCoord.y)) / 512;
+		y += 1;
+		if (-1.0 > x && 1.0 < x || -1.0 > y && 1.0 < y) {
+			x = 0.0f;
+			y = 0.0f;
+		}
+		return vec2(x, y);
 	}
 
-	glm::vec3 screenToWorldRay(const glm::vec2& screenCoord, const glm::mat4& projection, const glm::mat4& view) {
-		// NDC로 변환
-		glm::vec4 clipCoords(screenCoord.x, screenCoord.y, -1.0f, 1.0f);
 
-		// 뷰 공간으로 변환
-		glm::mat4 invProjection = glm::inverse(projection);
-		glm::vec4 eyeCoords = invProjection * clipCoords;
-		eyeCoords = glm::vec4(eyeCoords.x, eyeCoords.y, -1.0f, 0.0f);
+	void Testbed::getWorldCoordinates(GLFWwindow* window, double x, double y, float depth, vec3& outCoords, float cameraPosXYZ[3]) {
 
-		// 월드 공간으로 변환
-		glm::mat4 invView = glm::inverse(view);
-		glm::vec3 rayWorld = glm::vec3(invView * eyeCoords);
-		rayWorld = glm::normalize(rayWorld);
+		// 뷰 행렬 생성 (예: 단순 카메라 변환)
+		glm::vec3 cameraPos(cameraPosXYZ[0], cameraPosXYZ[1], cameraPosXYZ[2]); // 카메라 위치 점 o
 
-		return rayWorld;
+		glm::vec3 cameraTarget(128.0f, 128.0f, 128.0f); // 카메라가 바라보는 위치
+		glm::vec3 cameraUp(0.0f, 1.0f, 0.0f); // 카메라의 위쪽 방향
+		glm::vec3 cameraDir = normalize(cameraTarget - cameraPos);
+		//uvw
+		glm::vec3 cameraRight = normalize(cross(cameraDir, cameraUp));
+		glm::vec3 cameraUpNew = cross(cameraRight, cameraDir);
+
+		glm::mat4 projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f);
+		//glm::perspective(glm::radians(fov), aspect, zNear, zFar);// -1~1 사이범위를 
+		glm::mat4 view = glm::lookAt(cameraPos, cameraDir, cameraUp);//카메라 행렬
+
+		//glm::mat4 model = glm::rotate(model, glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f));//world 관점
+		/*printf(" cal NDC coords : %lf , %lf \n", x, y);*/
+
+		glm::vec4 ndcCoords = glm::vec4(x, y, -1.0f, 1.0f);//방향
+
+		// NDC -> 월드 -> 모델 좌표로 변환
+
+		glm::mat4 invP = inverse(projection);
+		glm::mat4 invV = inverse(view);
+
+		glm::vec4 worldCoords = invP * ndcCoords;
+		//worldCoords = glm::vec4(x, y, 0.0f, 0.0f);
+		worldCoords = glm::vec4(worldCoords.x, worldCoords.y, -1.0f, 0.0f);
+		worldCoords = invV * worldCoords;
+
+
+		/*if (worldCoords.w != 0.0f) {
+			worldCoords /= worldCoords.w;
+		}*/
+
+		glm::vec3 dir = glm::vec3(worldCoords) - cameraPos;
+
+		printf(" camera pos  : %f   %f   %f   \n", cameraPos.x, cameraPos.y, cameraPos.z);
+
+		printf(" cal worldDirCoords coords : %f , %f , %f\n", worldCoords.x, worldCoords.y, worldCoords.z);
+
+		outCoords = vec3(dir.x, dir.y, dir.z);
 	}
+
 
 	void Testbed::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
 		if (button == GLFW_MOUSE_BUTTON_LEFT) {
@@ -6841,20 +6952,32 @@ namespace ngp {
 		}
 		if (button == GLFW_MOUSE_BUTTON_RIGHT) {
 			if (action == GLFW_PRESS) {
-				glm::vec2 windowCoord(xpos, ypos);
-				glm::vec2 ndcCoord = windowToNDC(windowCoord, WIDTH, HEIGHT);
+				//mousePressed = true;
+				double WindowX, WindowY;
+				//1
+				glfwGetCursorPos(window, &WindowX, &WindowY);
+				std::cout << "Window Coordinates: " << WindowX << ", " << WindowY << std::endl;
 
-				// 프로젝션 행렬과 뷰 행렬 설정
-				glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 100.0f);
-				glm::mat4 view = glm::lookAt(cameraPos, cameraFront + cameraPos, cameraUp);
 
-				// 화면 좌표를 월드 공간 레이로 변환
-				glm::vec3 rayWorld = screenToWorldRay(ndcCoord, projection, view);
+				vec2 windowCoord(WindowX, WindowY);
+				vec2 textureCoord = windowToTextureCoord(windowCoord);
+				std::cout << "NDC Texture Coordinates: " << textureCoord.x << ", " << textureCoord.y << std::endl;
 
-				std::cout << "Ray in World Coordinates: (" << rayWorld.x << ", " << rayWorld.y << ", " << rayWorld.z << ")\n";
+				vec3 raystDir;
+
+				Testbed::getWorldCoordinates(window, textureCoord.x, textureCoord.y, 0.0f, raystDir, eye);
+
+				cudaError_t err;
+				vec3 rayO(eye[0], eye[1], eye[2]);
+
+				dim3 threadsPerBlock(256);
+				dim3 numBlocks((VOLX * VOLY * VOLZ + threadsPerBlock.x - 1) / threadsPerBlock.x);
+				raystDir = normalize(raystDir);
+				raycastKernel << <numBlocks, threadsPerBlock >> > (rayO, raystDir, dev_input);
+
 			}
 			else if (action == GLFW_RELEASE) {
-				mousePressed = false;
+				//mousePressed = false;
 			}
 		}
 	}

@@ -679,7 +679,7 @@ namespace ngp {
 	}
 
 	// Define the options
-	const char* options[] = { "Normal", "PBD", "Wave", "Bubble", "Twist" };
+	const char* options[] = { "Normal", "PBD", "Wave", "Bubble", "Twist" ,"Picking" };
 
 	void Testbed::RenderUI() {
 		ImGui::Begin("Select Button Render Mode");
@@ -2886,14 +2886,14 @@ namespace ngp {
 
 		}
 
-		// If we don't have a trainer, as can happen when having loaded training data or changed modes without having
-		// explicitly loaded a new neural network.
-		if (m_testbed_mode != ETestbedMode::None && !m_network) {
-			reload_network_from_file();
-			if (!m_network) {
-				throw std::runtime_error{ "Unable to reload neural network." };
-			}
-		}
+		//// If we don't have a trainer, as can happen when having loaded training data or changed modes without having
+		//// explicitly loaded a new neural network.
+		//if (m_testbed_mode != ETestbedMode::None && !m_network) {
+		//	reload_network_from_file();
+		//	if (!m_network) {
+		//		throw std::runtime_error{ "Unable to reload neural network." };
+		//	}
+		//}
 
 		//		if (m_mesh.optimize_mesh) {
 		//			optimise_mesh_step(1);
@@ -4538,7 +4538,8 @@ namespace ngp {
 	//	const vec4& nerf_rolling_shutter,
 	//	const Foveation& foveation,
 	//	int visualized_dimension
-	//) {
+	//)
+	//{
 	//	device.render_buffer_view().clear(device.stream());
 
 	//	if (!m_network) {

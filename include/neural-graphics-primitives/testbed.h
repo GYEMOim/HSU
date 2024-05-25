@@ -513,7 +513,6 @@ namespace ngp {
 		double lastX, lastY;
 		float yaw = 0.0f, pitch = 0.0f;
 		float eye[3] = { 0, 0, 500 };
-
 		bool PBD_flag = true;
 		bool render_flag = false;
 		void initPBD();
