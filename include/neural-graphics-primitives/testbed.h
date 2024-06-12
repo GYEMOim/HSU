@@ -455,12 +455,12 @@ namespace ngp {
 #define BSIZE 4
 		//PBD 변수 선언
 
-#define PBD_X 128//95//100//87//116//100//87//136//68//17//34//68//136//68//34//17//3//17//100//17//180//68//68//34//68
-#define PBD_Y 128//95//100//87//116//100//87//136//68//17//34//68//136//68//34//17//2//17//100//17//180//68//68//34//68
-#define PBD_Z 128//95//88//66//99//88//66//44//11//22//44//88//44//22//11//2//11//88//11 //180//44//44//22//44
+#define PBD_X 129//65//17//95//100//87//116//100//87//136//68//17//34//68//136//68//34//17//3//17//100//17//180//68//68//34//68
+#define PBD_Y 129//65//17//95//100//87//116//100//87//136//68//17//34//68//136//68//34//17//2//17//100//17//180//68//68//34//68
+#define PBD_Z 129//65//17//95//88//66//99//88//66//44//11//22//44//88//44//22//11//2//11//88//11 //180//44//44//22//44
 //50/50/44/12
 
-#define PBD_SCALE 4//6//6//6//5//6//6//4//8//32//16//8//8//16//32//6//32//16//4	
+#define PBD_SCALE 2//4//6//6//6//5//6//6//4//8//32//16//8//8//16//32//6//32//16//4	
 
 		float4* volume = new float4[VOLX * VOLY * VOLZ];
 
@@ -504,15 +504,14 @@ namespace ngp {
 		void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 		void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
 		void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
-		void getWorldCoordinates(GLFWwindow* window, double x, double y, float depth, vec3& outCoords, float cameraPos[3]);
+		void getWorldCoordinates(float mouseX, float mouseY, float depth, vec3& rayDir, vec3& rayO, float cameraPosXYZ[3], float zoom);
 		bool findVolumeAlphaCoord(const vec3& rayStart, const vec3& rayDir, float alphaThreshold, cudaTextureObject_t voltexObj, vec3& volumeCoord);
-		void updateCameraPosition();
 		float zoom = 1.0f;
+		float eye[3] = { 0, 0, 500 };
 
 		bool mousePressed = false;
 		double lastX, lastY;
 		float yaw = 0.0f, pitch = 0.0f;
-		float eye[3] = { 0, 0, 500 };
 		bool PBD_flag = true;
 		bool render_flag = false;
 		void initPBD();

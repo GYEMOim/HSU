@@ -1685,97 +1685,142 @@ namespace ngp {
 					//	save_rgba_grid_to_png_sequence(rgba, dir, res3d, flip_y_and_z_axes);
 					//}
 
-					RenderUI();
+					//RenderUI();
+					//
+					//if (imgui_colored_button("RGBA.den", 0.4f)) {
+					//	auto effective_view_dir = flip_y_and_z_axes ? vec3{ 0.0f, 1.0f, 0.0f } : vec3{ 0.0f, 0.0f, 1.0f };
+					//	auto old_local = m_render_aabb_to_local;
+					//	auto old_aabb = m_render_aabb;
+					//	m_render_aabb_to_local = mat3::identity();
+					//	//auto dir = m_data_path.is_directory() || m_data_path.empty() ? (m_data_path / "volume_raw") : (m_data_path.parent_path() / fmt::format("{}_volume_raw", m_data_path.filename()));
+					//	/*if (!dir.exists()) {
+					//		fs::create_directory(dir);
+					//	}*/
+					//
+					//	int a = 0;
+					//	for (int cascade = 0; (1 << cascade) <= m_aabb.diag().x + 0.5f; ++cascade) {
+					//		float radius = (1 << cascade) * 0.5f;
+					//		m_render_aabb = BoundingBox(vec3(0.5f - radius), vec3(0.5f + radius));
+					//
+					//		// Dump raw density values that the user can then convert to alpha as they please.
+					//		//GPUMemory<vec4> rgba =
+					//
+					//		rgba = get_rgba_on_grid(res3d, effective_view_dir, true, 0.0f, true);
+					//
+					//		//renderTextureInSecondWindow();
+					//		//save_rgba_grid_to_raw_file(rgba, dir, res3d, flip_y_and_z_axes, cascade;
+					//
+					//	}
+					//	//static const int volume_dim = 256;
+					//	//static const int margin = 50; // 가장자리에서 보존할 범위
+					//	//for (size_t i = 0; i < rgba.size(); ++i) {
+					//
+					//	//	/*if (rgba_cpu[i].w <= 20 || rgba_cpu[i].w >= 40) {
+					//	//		rgba_cpu[i].w = 0;
+					//	//	}*/
+					//	//	rgba[i].w = 1.0f - pow(2.71828, -(rgba[i].w - 1.0f));
+					//	//	//볼륨 데이터의 좌표를 계산
+					//	//	int ix = i % volume_dim;
+					//	//	int iy = (i / volume_dim) % volume_dim;
+					//	//	int iz = i / (volume_dim * volume_dim);
+					//
+					//	//	// 중심에서 margin 범위 이내에 있는 부분은 보존
+					//	//	if (ix >= volume_dim / 2 - margin && ix < volume_dim / 2 + margin &&
+					//	//		iy >= volume_dim / 2 - margin && iy < volume_dim / 2 + margin + 20 &&
+					//	//		iz >= volume_dim / 2 - margin && iz < volume_dim / 2 + margin) {
+					//	//		continue; // 보존할 부분은 건너뜀
+					//	//	}
+					//	//	// 나머지 가장자리 부분을 투명하게 처리 (alpha 값을 0으로 설정)
+					//	//	rgba[i].w = 0.0f;
+					//	//}
+					//
+					//	//std::vector<vec4> rgba_cpu;
+					//	//rgba_cpu.resize(rgba.size());
+					//	//rgba.copy_to_host(rgba_cpu);
+					//	//static const int volume_dim = 256;
+					//	//static const int margin = 50; // 가장자리에서 보존할 범위
+					//	// for (size_t i = 0; i < rgba_cpu.size(); ++i) {
+					//
+					//	//	/*if (rgba_cpu[i].w <= 20 || rgba_cpu[i].w >= 40) {
+					//	//		rgba_cpu[i].w = 0;
+					//	//	}*/
+					//	//	rgba_cpu[i].w = 1.0f - pow(2.71828, -(rgba_cpu[i].w - 1.0f));
+					//	//	//볼륨 데이터의 좌표를 계산
+					//	//	int ix = i % volume_dim;
+					//	//	int iy = (i / volume_dim) % volume_dim;
+					//	//	int iz = i / (volume_dim * volume_dim);
+					//	//
+					//	//	// 중심에서 margin 범위 이내에 있는 부분은 보존
+					//	//	if (ix >= volume_dim / 2 - margin && ix < volume_dim / 2 + margin &&
+					//	//		iy >= volume_dim / 2 - margin && iy < volume_dim / 2 + margin + 20 &&
+					//	//		iz >= volume_dim / 2 - margin && iz < volume_dim / 2 + margin) {
+					//	//		continue; // 보존할 부분은 건너뜀
+					//	//	}
+					//	//	// 나머지 가장자리 부분을 투명하게 처리 (alpha 값을 0으로 설정)
+					//	//	rgba_cpu[i].w = 0.0f;
+					//	//}
+					//	//const float density_threshold = 5.0f; // 임의의 값으로 설정
+					//	//for (uint32_t i = 0; i < rgba_cpu.size(); ++i) {
+					//	//	// 볼륨 데이터의 밀도가 임계값 미만인 경우 투명하게 처리 (불필요한 장애물 제거)
+					//	//	if (rgba_cpu[i].w < density_threshold) {
+					//	//		rgba_cpu[i].w = 0.0f; // 투명 처리 (또는 다른 처리 방법을 선택)
+					//	//	}
+					//	//}
+					//	/*vec4* rgbaData = rgba_cpu.data();
+					//
+					//	std::memcpy(Testbed::volume, rgbaData, 256 * 256 * 256 * sizeof(vec4));*/
+					//	//openPBDWindow(volume);
+					//
+					//	render_flag = true;
+					//	glfwMakeContextCurrent(m_glfw_window);
+					//	m_render_aabb_to_local = old_local;
+					//	m_render_aabb = old_aabb;
+					//}
+
+
+					ImGui::Begin("Select Button Render Mode");
+					for (int i = 0; i < IM_ARRAYSIZE(options); i++) {
+						if (ImGui::RadioButton(options[i], selected_option == i))
+							selected_option = i;
+					}
+					ImGui::Text("Selected option: %s", options[selected_option]);
 
 					if (imgui_colored_button("RGBA.den", 0.4f)) {
 						auto effective_view_dir = flip_y_and_z_axes ? vec3{ 0.0f, 1.0f, 0.0f } : vec3{ 0.0f, 0.0f, 1.0f };
 						auto old_local = m_render_aabb_to_local;
 						auto old_aabb = m_render_aabb;
 						m_render_aabb_to_local = mat3::identity();
-						//auto dir = m_data_path.is_directory() || m_data_path.empty() ? (m_data_path / "volume_raw") : (m_data_path.parent_path() / fmt::format("{}_volume_raw", m_data_path.filename()));
-						/*if (!dir.exists()) {
-							fs::create_directory(dir);
-						}*/
+
 
 						int a = 0;
 						for (int cascade = 0; (1 << cascade) <= m_aabb.diag().x + 0.5f; ++cascade) {
 							float radius = (1 << cascade) * 0.5f;
 							m_render_aabb = BoundingBox(vec3(0.5f - radius), vec3(0.5f + radius));
 
-							// Dump raw density values that the user can then convert to alpha as they please.
-							//GPUMemory<vec4> rgba =
-
 							rgba = get_rgba_on_grid(res3d, effective_view_dir, true, 0.0f, true);
 
-							//renderTextureInSecondWindow();
-							//save_rgba_grid_to_raw_file(rgba, dir, res3d, flip_y_and_z_axes, cascade;
-
 						}
-						//static const int volume_dim = 256;
-						//static const int margin = 50; // 가장자리에서 보존할 범위
-						//for (size_t i = 0; i < rgba.size(); ++i) {
 
-						//	/*if (rgba_cpu[i].w <= 20 || rgba_cpu[i].w >= 40) {
-						//		rgba_cpu[i].w = 0;
-						//	}*/
-						//	rgba[i].w = 1.0f - pow(2.71828, -(rgba[i].w - 1.0f));
-						//	//볼륨 데이터의 좌표를 계산
-						//	int ix = i % volume_dim;
-						//	int iy = (i / volume_dim) % volume_dim;
-						//	int iz = i / (volume_dim * volume_dim);
-
-						//	// 중심에서 margin 범위 이내에 있는 부분은 보존
-						//	if (ix >= volume_dim / 2 - margin && ix < volume_dim / 2 + margin &&
-						//		iy >= volume_dim / 2 - margin && iy < volume_dim / 2 + margin + 20 &&
-						//		iz >= volume_dim / 2 - margin && iz < volume_dim / 2 + margin) {
-						//		continue; // 보존할 부분은 건너뜀
-						//	}
-						//	// 나머지 가장자리 부분을 투명하게 처리 (alpha 값을 0으로 설정)
-						//	rgba[i].w = 0.0f;
-						//}
-
-						//std::vector<vec4> rgba_cpu;
-						//rgba_cpu.resize(rgba.size());
-						//rgba.copy_to_host(rgba_cpu);
-						//static const int volume_dim = 256;
-						//static const int margin = 50; // 가장자리에서 보존할 범위
-						// for (size_t i = 0; i < rgba_cpu.size(); ++i) {
-
-						//	/*if (rgba_cpu[i].w <= 20 || rgba_cpu[i].w >= 40) {
-						//		rgba_cpu[i].w = 0;
-						//	}*/
-						//	rgba_cpu[i].w = 1.0f - pow(2.71828, -(rgba_cpu[i].w - 1.0f));
-						//	//볼륨 데이터의 좌표를 계산
-						//	int ix = i % volume_dim;
-						//	int iy = (i / volume_dim) % volume_dim;
-						//	int iz = i / (volume_dim * volume_dim);
-						//
-						//	// 중심에서 margin 범위 이내에 있는 부분은 보존
-						//	if (ix >= volume_dim / 2 - margin && ix < volume_dim / 2 + margin &&
-						//		iy >= volume_dim / 2 - margin && iy < volume_dim / 2 + margin + 20 &&
-						//		iz >= volume_dim / 2 - margin && iz < volume_dim / 2 + margin) {
-						//		continue; // 보존할 부분은 건너뜀
-						//	}
-						//	// 나머지 가장자리 부분을 투명하게 처리 (alpha 값을 0으로 설정)
-						//	rgba_cpu[i].w = 0.0f;
-						//}
-						//const float density_threshold = 5.0f; // 임의의 값으로 설정
-						//for (uint32_t i = 0; i < rgba_cpu.size(); ++i) {
-						//	// 볼륨 데이터의 밀도가 임계값 미만인 경우 투명하게 처리 (불필요한 장애물 제거)
-						//	if (rgba_cpu[i].w < density_threshold) {
-						//		rgba_cpu[i].w = 0.0f; // 투명 처리 (또는 다른 처리 방법을 선택)
-						//	}
-						//}
-						/*vec4* rgbaData = rgba_cpu.data();
-
-						std::memcpy(Testbed::volume, rgbaData, 256 * 256 * 256 * sizeof(vec4));*/
-						//openPBDWindow(volume);
 
 						render_flag = true;
 						glfwMakeContextCurrent(m_glfw_window);
 						m_render_aabb_to_local = old_local;
 						m_render_aabb = old_aabb;
 					}
+
+
+					ImGui::SameLine();
+
+					if (ImGui::Button("Save")) {
+						// Save the selected option
+						saved_option = selected_option;
+					}
+
+					if (saved_option != -1) {
+						ImGui::Text("Saved option: %s", options[saved_option]);
+					}
+
+					ImGui::End();
 				}
 
 				/*ImGui::SameLine();
@@ -2873,6 +2918,59 @@ namespace ngp {
 		}
 
 		if (render_flag) {
+			//int margin_x = 125;
+			//int margin_y = 140;
+			//int margin_z = 135;
+			//
+			//int volume_dim = 256;
+			//size_t total_size = volume_dim * volume_dim * volume_dim;
+			//size_t byte_size = total_size * sizeof(vec4);
+			//
+			//// CPU 메모리 할당
+			//std::vector<vec4> rgba_cpu(total_size);
+			//
+			//// GPU 메모리 할당 및 초기화 예시 (디버깅용)
+			//vec4* d_rgba;
+			//cudaMalloc(&d_rgba, byte_size);
+			//cudaMemcpy(d_rgba, rgba.data(), byte_size, cudaMemcpyHostToDevice);
+			//
+			//// GPU에서 CPU로 메모리 복사
+			//cudaError_t err = cudaMemcpy(rgba_cpu.data(), d_rgba, byte_size, cudaMemcpyDeviceToHost);
+			//if (err != cudaSuccess) {
+			//	std::cerr << "CUDA memcpy error: " << cudaGetErrorString(err) << std::endl;
+			//	cudaFree(d_rgba);
+			//	return;
+			//}
+			//
+			//// 중심 좌표
+			//int cx = volume_dim / 2;
+			//int cy = volume_dim / 2;
+			//int cz = volume_dim / 2;
+			//
+			//// CPU에서 작업 수행
+			//for (size_t i = 0; i < total_size; ++i) {
+			//	int ix = i % volume_dim;
+			//	int iy = (i / volume_dim) % volume_dim;
+			//	int iz = i / (volume_dim * volume_dim);
+			//
+			//	// 타원 방정식에 따른 내부 점 체크
+			//	float dx = (ix - cx) / static_cast<float>(margin_x);
+			//	float dy = (iy - cy) / static_cast<float>(margin_y);
+			//	float dz = (iz - cz) / static_cast<float>(margin_z);
+			//
+			//	if (dx * dx + dy * dy + dz * dz <= 1.0f) {
+			//		continue;
+			//	}
+			//
+			//	rgba_cpu[i].w = 0.0f;
+			//}
+			//
+			////GPU 메모리 해제
+			//cudaFree(d_rgba);
+			//
+			//// CPU에서 GPU로 메모리 복사
+			//cudaMemcpy(rgba.data(), rgba_cpu.data(), byte_size, cudaMemcpyHostToDevice);
+
 			Testbed::InitData();
 			printf("test\n");
 			if (selected_option == 1) {

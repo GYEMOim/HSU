@@ -500,9 +500,10 @@ namespace ngp {
 		if (i >= n_elements) return;
 		//|| ix < margin || ix >= volume_dim - margin || iy < margin || iy >= volume_dim - margin || iz < margin || iz >= volume_dim - margin
 		network_output[i] = compute_nerf_rgba(network_output[i], rgb_activation, density_activation, depth, density_as_alpha);
-		if (network_output[i].w < 5.0f) {
+		if (network_output[i].w < 20.0f) {
 			network_output[i].w = 0.0f;
 		}
+
 		network_output[i].w = 1.0f - pow(2.71828, -(network_output[i].w));
 
 	}
@@ -3246,7 +3247,11 @@ namespace ngp {
 
 	unsigned char MyTexture[512][512][3];
 	float AlphaTable[256]; // Alpha 블랜딩을 위한 AlphaTable
-
+	bool isDragging = false;
+	double initialX, initialY, finalX, finalY;
+	vec3 firstRayDir, firstRayO, finalRayDir, finalRayO;
+	vec3 RaystartDot(0, 0, 0);
+	vec3 RayEnddot(0, 0, 0);
 	__constant__ float mytime[1];
 
 	struct voxel1 {
@@ -3259,7 +3264,9 @@ namespace ngp {
 	__device__ unsigned char* dev_output;
 	//float4 volume[256][256][256];
 	__device__ int IndexPosDefrom = 0;
-
+	__device__ int IndexPosRay[10000];
+	__device__ vec3 deformDir2;
+	vec3 deformDir;
 	cudaTextureObject_t voltexObj;
 	cudaTextureObject_t voltexOutObj;
 	cudaArray* pDevArr = 0;
@@ -3284,7 +3291,7 @@ namespace ngp {
 
 	__device__ __host__ struct Edge {
 		int m_vert[2];// 정점 배열에 들어있는 번호
-		float st = 1; //stiffness
+		float st = 1.0; //stiffness
 		float rl = 0; //restLength
 		//float rl; //restLength
 	};
@@ -3302,7 +3309,7 @@ namespace ngp {
 	__device__ __host__ struct SkinSurface {
 		int m_edges[3]; //따로.. 안필요하지 않나..?
 		int m_vert[3];// 정점 배열에 들어있는 번호
-		float st = 1; //stiffness
+		float st = 1.0; //stiffness
 		float rsa = 0; //restSkinArea
 	};
 
@@ -3742,7 +3749,7 @@ namespace ngp {
 				g_edges[i].rl = rl;
 			//if (vertices[g_edges[i].m_vert[0]].pz == 0) g_edges[i].rl = rl * LengthShrink;
 			float avg_density = (vertices[i1].d + vertices[i2].d) / 2;
-			float stiffness = 0.5;//avg_density / 1000.;
+			float stiffness = 1.0;//0.8;//0.5;//avg_density / 1000.;
 
 			g_edges[i].st = stiffness;
 			distance_constraints.push_back(DistanceConstraint(i1, i2, rl, g_edges[i].st));
@@ -3780,7 +3787,7 @@ namespace ngp {
 			//초기화,,?
 			//float stiffness = avg_density / 500;
 
-			g_skins[i].st = 0.9;//stiffness;
+			g_skins[i].st = 1.0;//0.8;//0.9;//stiffness;
 
 			//printf("%d\n", i);
 			skin_constraints.push_back(SkinTenstionConstraint(i1, i2, i3, g_skins[i].rsa, g_skins[i].st));
@@ -3811,7 +3818,7 @@ namespace ngp {
 			// tetra Volume = 1./6 * (a x b) * c 
 			float avector[3], bvector[3], cvector[3];
 			float avg_density = (vertices[i1].d + vertices[i2].d + vertices[i3].d + vertices[i4].d) / 4;
-			float stiffness = 0.5;//avg_density / 1000;
+			float stiffness = 1.0;//0.8;//0.5;//avg_density / 1000;
 			//if (stiffness > 2)stiffness = 2;
 			//else stiffness += 0.2;
 			g_tets[i].st = stiffness;
@@ -4005,18 +4012,19 @@ namespace ngp {
 					//    vertices[index].d = vol[(int)z_temp * (PBD_SCALE - 2)][(int)y_temp * PBD_SCALE][(int)x_temp * PBD_SCALE];
 					//printf("%d : %7.1f  ",index, vertices[index].d);
 					//PBD밑작업
-					if ((PBD_SCALE * z_temp < 256) && (y_temp * PBD_SCALE < 256) && (x_temp * PBD_SCALE < 256))
-						//여기 바꿔야함
-						linearIndex = (int)x_temp * PBD_SCALE * VOLX * VOLY + (int)y_temp * PBD_SCALE * VOLX + (int)z_temp * PBD_SCALE;
-					vertices[index].d = volume[linearIndex].w;
+					if ((PBD_SCALE * z_temp < 256) && (y_temp * PBD_SCALE < 256) && (x_temp * PBD_SCALE < 256)) {
+						linearIndex = (int)z_temp * PBD_SCALE * VOLX * VOLY + (int)y_temp * PBD_SCALE * VOLX + (int)x_temp * PBD_SCALE;
+						vertices[index].d = volume[linearIndex].w;
+					}
+
 					//printf("Vertices : %f,Volume : %f\n", vertices[index].d, volume[linearIndex].w);
-				//printf("volume Test : %f, %f\n", vertices[index].d, volume[index].w);
+//printf("volume Test : %f, %f\n", vertices[index].d, volume[index].w);
 
-					if (vertices[index].px == PBD_X || vertices[index].px == 0 ||
-						vertices[index].py == PBD_Y || vertices[index].py == 0 ||
-						vertices[index].pz == PBD_Z || vertices[index].pz == 0
+					if (vertices[index].px == PBD_X - 1 || vertices[index].px == 1 ||
+						vertices[index].py == PBD_Y - 1 || vertices[index].py == 1 ||
+						vertices[index].pz == PBD_Z - 1 || vertices[index].pz == 1
 						) {
-
+						//if(vertices[index].py <= 10){
 						vertices[index].im = 0.0; //infinite mass
 						vertices[index].az = 0; // 벽에 붙은 친구들은 힘을 받지 않는다.
 						//vertices[z * Y * Z + y * Z + x].m = 0.0
@@ -4090,11 +4098,11 @@ namespace ngp {
 			//    t.ay = 0; // 벽에 붙은 친f구들은 중력의 힘을 받지 않는다.
 			//                            //vertices[z * Y * Z + y * Z + x].m = 0.0
 			//}
-			if (t.px == PBD_X || t.px == 0 ||
-				t.py == PBD_Y || t.py == 0 ||
-				t.pz == PBD_Z || t.pz == 0
+			if (t.px == PBD_X - 1 || t.px == 1 ||
+				t.py == PBD_Y - 1 || t.py == 1 ||
+				t.pz == PBD_Z - 1 || t.pz == 1
 				) {
-
+				//if (t.py <= 10) {
 				t.im = 0.0; //infinite mass
 				t.az = 0; // 벽에 붙은 친구들은 힘을 받지 않는다.
 				//vertices[z * Y * Z + y * Z + x].m = 0.0
@@ -5676,198 +5684,12 @@ namespace ngp {
 
 	__constant__ vec3 deye[1];
 	__constant__ vec3 duvw[3];
-	//vecsm eye(0, 200, 256);
-	//vecsm at(128, 128, 128);
-	//vecsm dirsm(0,0,0);
-	//vecsm up(0, -1, 0);
-	//vecsm w;
-	//vecsm u;
-	//vecsm v;
-	//vecsm rayStart;
 
-
-	//void MakeAlphaTable(int a, int b) {
-	//	for (int i = 0; i < 256; i++) {
-	//		if (i < a) {
-	//			AlphaTable[i] = 0;
-	//		}
-	//		else if (i >= a && i < b) {
-	//			AlphaTable[i] = (float)(i - a) / (b - a);
-	//		}
-	//		else if (i >= b) {
-	//			AlphaTable[i] = 1;
-	//		}
-	//	}
-	//}
-	// void samplingRGB(float x, float y, float z, float* color) { // 일종의 colorTable 역할
-	//	if (x >= 255 || y >= 255 || z >= 255 || x < 0 || y < 0 || z < 0) {
-	//		color[0] = color[1] = color[2] = 0;
-	//		return;
-	//	}
-	//	int ix = (int)x;
-	//	float wx = x - ix;
-	//	int iy = (int)y;
-	//	float wy = y - iy;
-	//	int iz = (int)z;
-	//	float wz = z - iz;
-
-	//	for (int i = 0; i < 3; i++) { // 각 색상 채널에 대해 별도로 보간
-	//		float a = (i == 0 ? volume[iz][iy][ix].r : (i == 1 ? volume[iz][iy][ix].g : volume[iz][iy][ix].b));
-	//		float b = (i == 0 ? volume[iz][iy][ix + 1].r : (i == 1 ? volume[iz][iy][ix + 1].g : volume[iz][iy][ix + 1].b));
-	//		float c = (i == 0 ? volume[iz][iy + 1][ix].r : (i == 1 ? volume[iz][iy + 1][ix].g : volume[iz][iy + 1][ix].b));
-	//		float d = (i == 0 ? volume[iz][iy + 1][ix + 1].r : (i == 1 ? volume[iz][iy + 1][ix + 1].g : volume[iz][iy + 1][ix + 1].b));
-	//		float e = (i == 0 ? volume[iz + 1][iy][ix].r : (i == 1 ? volume[iz + 1][iy][ix].g : volume[iz + 1][iy][ix].b));
-	//		float f = (i == 0 ? volume[iz + 1][iy][ix + 1].r : (i == 1 ? volume[iz + 1][iy][ix + 1].g : volume[iz + 1][iy][ix + 1].b));
-	//		float g = (i == 0 ? volume[iz + 1][iy + 1][ix].r : (i == 1 ? volume[iz + 1][iy + 1][ix].g : volume[iz + 1][iy + 1][ix].b));
-	//		float h = (i == 0 ? volume[iz + 1][iy + 1][ix + 1].r : (i == 1 ? volume[iz + 1][iy + 1][ix + 1].g : volume[iz + 1][iy + 1][ix + 1].b));
-
-	//		color[i] = a * (1 - wx) * (1 - wy) * (1 - wz) + b * (wx) * (1 - wy) * (1 - wz) +
-	//			c * (1 - wx) * wy * (1 - wz) + d * wx * wy * (1 - wz) + e * (1 - wx) * (1 - wy) * wz
-	//			+ f * (wx) * (1 - wy) * wz + g * (1 - wx) * wy * wz + h * wx * wy * wz;
-	//	}
-	//}
-
-	// float sampling(float x, float y, float z) { // x=3.7 , ix = 3
-	//	// 힌트, 좌표 벗어나서 메모리 참조 오류 해결할 것.
-	//	if (x >= 255 || y >= 255 || z >= 255 || x < 0 || y < 0 || z < 0)
-	//		return 0;
-	//	int ix = (int)x;
-	//	float wx = x - ix;
-	//	int iy = (int)y;
-	//	float wy = y - iy;
-	//	int iz = (int)z;
-	//	float wz = z - iz;
-
-
-	//	float a = volume[iz][iy][ix].a;
-	//	float b = volume[iz][iy][ix + 1].a;
-	//	float c = volume[iz][iy + 1][ix].a;
-	//	float d = volume[iz][iy + 1][ix + 1].a;
-	//	float e = volume[iz + 1][iy][ix].a;
-	//	float f = volume[iz + 1][iy][ix + 1].a;
-	//	float g = volume[iz + 1][iy + 1][ix].a;
-	//	float h = volume[iz + 1][iy + 1][ix + 1].a;
-
-	//	float res = a * (1 - wx) * (1 - wy) * (1 - wz) + b * (wx) * (1 - wy) * (1 - wz) +
-	//		c * (1 - wx) * wy * (1 - wz) + d * wx * wy * (1 - wz) + e * (1 - wx) * (1 - wy) * wz
-	//		+ f * (wx) * (1 - wy) * wz + g * (1 - wx) * wy * wz + h * wx * wy * wz;
-
-
-	//	if (res > 255) res = 255;
-	//	//반환 값에 따라 선명도 조절
-	//	return res; // 77.285
-
-	//	//return vol[iz][iy][ix];
-
-	//	//float a = vol[iz][iy][ix], float b=[iz][iy][ix+1], float c, float d
-	//	//float res = a* (1 - wx)* (1 - wy) + b*(wx) * (1 - wy) +
-	//	//   c * (1 - wx) * wy + d * wx * wy;
-	//	//return res; // 77.285
-	//}
 #include <windows.h>
 #include <iostream>
 
-	// void FillMyTexture() {
-	//	// Fill MyTexture with grayscale gradient
-	//	//FILE* fp = fopen("C:/Users/admin/instant-ngp/src/sm0305(2).den", "rb");
-	//	////fread(volume, sizeof(voxel1), 256 * 256 * 256, fp);
-	//	//fread(volume, sizeof(float4), 256 * 256 * 256, fp);
-	//	//fclose(fp);
-
-	//	for (int iy = 0; iy < HEIGHT; iy++) {
-	//		for (int ix = 0; ix < WIDTH; ix++) {
-	//			int dx = (ix - 512) / 2; // 중심점 기준으로 영상 u축 방향으로 몇칸 움직였나
-	//			int dy = (iy - 512) / 2; // 중심점 기준으로 영상 v축 방향으로 몇칸 움직였나
-
-	//			//vec3 rs = eye + u * dx + v * dy;
-	//			rayStart = eye + u * dx + v * dy;
-	//			int maxv = 0;
-	//			float alphasum = 0;
-	//			float colorsum[3];
-	//			for (int t = 0; t < 3; t++) {
-	//				colorsum[t] = 0;
-	//			}
-	//			for (int t = 0; t < 255; t++) {
-	//				// vec3 s = rs + w*t;
-	//				vecsm s;
-	//				s.m[0] = rayStart.m[0] + w.m[0] * t;
-	//				s.m[1] = rayStart.m[1] + w.m[1] * t;
-	//				s.m[2] = rayStart.m[2] + w.m[2] * t;
-	//				//float vz = t, vy = iy, vx = ix; // ity % 256, vy = ix % 256, vx = t;
-	//				//if (vz >= 225)
-	//				//   continue;
-	//				GLubyte Intensity = sampling(s.m[0], s.m[1], s.m[2]); // samplig(s);
-	//				//float max = __max(max, Intensity);
-
-	//				float color[3];
-	//				samplingRGB(s.m[0], s.m[1], s.m[2], color);
-
-	//				float alpha = AlphaTable[Intensity];
-	//				if (alpha == 0) {
-	//					continue;
-	//				}
-	//				float dx = (sampling(s.m[0] + 1, s.m[1], s.m[2]) - sampling(s.m[0] - 1, s.m[1], s.m[2])) * 0.5;
-	//				float dy = (sampling(s.m[0], s.m[1] + 1, s.m[2]) - sampling(s.m[0], s.m[1] - 1, s.m[2])) * 0.5;
-	//				float dz = (sampling(s.m[0], s.m[1], s.m[2] + 1) - sampling(s.m[0], s.m[1], s.m[2] - 1)) * 0.5;
-	//				vecsm N;
-	//				N.m[0] = dx;
-	//				N.m[1] = dy;
-	//				N.m[2] = dz;
-	//				N.vec_norm();
-	//				// alpha blending
-	//				// calc light
-	//				float Ia = 0.3, Id = 0.6, Is = 0.3; // 고정, Ia[3] = {0.3 , 0.3, 0.3}; // r,g,b동일 느낌
-	//				float Ka[3], Kd[3];
-	//				for (int i = 0; i < 3; i++) {
-	//					Ka[i] = color[i];
-	//					Kd[i] = color[i];
-	//				}
-	//				float Ks = 1.0;
-	//				vecsm L(w); // 광부 조명 모델(편리)
-	//				L = L * -1.0;
-
-	//				float NL = N.dot(L);
-	//				if (NL < 0)
-	//					NL = -NL;
-	//				vecsm H = eye; // 광부모델의 경우만 가능 원래는 (L + eye).normalize();
-	//				float NH = N.dot(H); // RV
-	//				if (NH < 0)
-	//					NH = -NH;
-	//				vecsm R = N * (2 * NL) - L;
-	//				R.vec_norm();
-	//				float RV = fabs(R.dot(w));
-	//				const float po = 10;
-	//				// K는 물체색상, 그러므로 color[3]을 사용.
-	//				float I[3];
-	//				float e[3];
-	//				for (int i = 0; i < 3; i++) {
-
-	//					I[i] = Ia * Ka[i] + Id * Kd[i] * NL + Is * Ks * pow(RV, po);
-	//					e[i] = I[i] * alpha;
-	//					colorsum[i] = colorsum[i] + e[i] * (1 - alphasum);
-	//				}
 
 
-	//				alphasum = alphasum + alpha * (1 - alphasum);
-	//				// 속도향상: 화질을 저하없이 (최소한으로하면서) 연산을 줄이는 방법 연구
-	//				if (alphasum > 0.99) {
-	//					break;
-	//				}
-
-	//			}
-
-	//			for (int i = 0; i < 3; i++) {
-	//				if (colorsum[i] > 1)
-	//					colorsum[i] = 1;
-	//			}
-
-	//			MyTexture[iy][ix][0] = colorsum[0] * 255.0; //Red 값에 할당
-	//			MyTexture[iy][ix][1] = colorsum[1] * 255.0; //Green 값에 할당
-	//			MyTexture[iy][ix][2] = colorsum[2] * 255.0; //Blue 값에 할당
-
-	//		}
-	//	}
-	//}
 	void generateGradient() {
 
 		//glClear(GL_COLOR_BUFFER_BIT);
@@ -5897,6 +5719,7 @@ namespace ngp {
 			1.0f, 0.0f,
 			1.0f, 1.0f
 		};
+
 
 		// Generate vertex buffer object (VBO) for vertices
 		GLuint vboVertices;
@@ -5963,14 +5786,62 @@ namespace ngp {
 		glDrawArrays(GL_QUADS, 0, 4);
 
 		// Cleanup
-		glDeleteBuffers(1, &vboVertices);
-		glDeleteBuffers(1, &vboTexCoords);
-		glDeleteShader(vertexShader);
-		glDeleteShader(fragmentShader);
-		glDeleteProgram(shaderProgram);
+		//glDeleteBuffers(1, &vboVertices);
+		//glDeleteBuffers(1, &vboTexCoords);
+		//glDeleteShader(vertexShader);
+		//glDeleteShader(fragmentShader);
+		//glDeleteProgram(shaderProgram);
 
 		// Swap buffers
 		//glfwSwapBuffers(window);
+		// 선을 위한 버텍스 데이터 정의
+
+		//float lineVertices[] = {
+		//	firstRayO.x, firstRayO.y, firstRayO.z,
+		//	firstRayDir.x/4, firstRayDir.y/4, firstRayDir.z/4
+
+		//};
+
+		//const char* lineVertexShaderSource = "#version 330 core\n"
+		//	"layout (location = 0) in vec3 aPos;\n"
+		//	"void main() {\n"
+		//	"    gl_Position = vec4(aPos, 1.0);\n"
+		//	"}\0";
+		//const char* lineFragmentShaderSource = "#version 330 core\n"
+		//	"out vec4 FragColor;\n"
+		//	"void main() {\n"
+		//	"    FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red color\n"
+		//	"}\0";
+		//GLuint lineVertexShader = glCreateShader(GL_VERTEX_SHADER);
+		//glShaderSource(lineVertexShader, 1, &lineVertexShaderSource, NULL);
+		//glCompileShader(lineVertexShader);
+		//GLuint lineFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+		//glShaderSource(lineFragmentShader, 1, &lineFragmentShaderSource, NULL);
+		//glCompileShader(lineFragmentShader);
+		//// Create shader program for the line
+		//GLuint lineShaderProgram = glCreateProgram();
+		//glAttachShader(lineShaderProgram, lineVertexShader);
+		//glAttachShader(lineShaderProgram, lineFragmentShader);
+		//glLinkProgram(lineShaderProgram);
+		//glUseProgram(lineShaderProgram);
+
+		//GLuint vboLine;
+		//glGenBuffers(1, &vboLine);
+		//glBindBuffer(GL_ARRAY_BUFFER, vboLine);
+		//glBufferData(GL_ARRAY_BUFFER, sizeof(lineVertices), lineVertices, GL_STATIC_DRAW);
+
+		//// 같은 셰이더 프로그램 사용 또는 필요 시 다른 셰이더 프로그램 사용
+		//// 여기서는 같은 셰이더 프로그램을 사용한다고 가정
+
+		//// 선을 위한 버텍스 속성 바인딩
+		//glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+		//glEnableVertexAttribArray(0);
+
+		//// 선 그리기
+		//glDrawArrays(GL_LINES, 0, 2);
+
+		//// 선을 위한 VBO 정리
+		//glDeleteBuffers(1, &vboLine);
 	}
 	__device__ float4 TLSampling(vecsm sample, float4* vol) {
 		int index = int(sample.z()) * 256 * 256 + int(sample.y()) * 256 + int(sample.x());
@@ -6076,8 +5947,15 @@ namespace ngp {
 		Max.z = fmaxf(fmaxf(v1.z, v2.z), fmaxf(v3.z, v4.z));
 
 	}
+	//__device__ bool OutsideTest(float4 b) {
+	//	if (b.x < 0 || b.x>1 || b.y < 0 || b.y>1 || b.z < 0 || b.z>1 || b.w < 0 || b.w > 1)
+	//		return true;
+	//	else
+	//		return false;
+	//}
+
 	__device__ bool OutsideTest(float4 b) {
-		if (b.x < 0 || b.x>1 || b.y < 0 || b.y>1 || b.z < 0 || b.z>1 || b.w < 0 || b.w > 1)
+		if (b.x < -1 || b.x>2 || b.y < -1 || b.y>2 || b.z < -1 || b.z>2 || b.w < -1 || b.w > 2)
 			return true;
 		else
 			return false;
@@ -6167,18 +6045,8 @@ namespace ngp {
 					pOutGrid[z * 256 * 256 + y * 256 + x].z = den.z;
 					pOutGrid[z * 256 * 256 + y * 256 + x].w = den.w;
 
-					pOutGrid[IndexPosDefrom - 1].x = 255.0;
-					pOutGrid[IndexPosDefrom - 1].y = 0.0;
-					pOutGrid[IndexPosDefrom - 1].z = 0.0;
-					pOutGrid[IndexPosDefrom - 1].w = 1.0;
-					pOutGrid[IndexPosDefrom].x = 255.0;
-					pOutGrid[IndexPosDefrom].y = 0.0;
-					pOutGrid[IndexPosDefrom].z = 0.0;
-					pOutGrid[IndexPosDefrom].w = 1.0;
-					pOutGrid[IndexPosDefrom + 1].x = 255.0;
-					pOutGrid[IndexPosDefrom + 1].y = 0.0;
-					pOutGrid[IndexPosDefrom + 1].z = 0.0;
-					pOutGrid[IndexPosDefrom + 1].w = 1.0;
+
+
 
 					//printf("%2f, %2f, %2f,%2f\n", pOutGrid[z * 256 * 256 + y * 256 + x].x, pOutGrid[z * 256 * 256 + y * 256 + x].y, pOutGrid[z * 256 * 256 + y * 256 + x].z, pOutGrid[z * 256 * 256 + y * 256 + x].w);
 					//pOutGrid[z * 256 * 256 + y * 256 + x].a() = den;//outgird에 1차원으로 표현한 배열에 해당 값을 할당
@@ -6186,13 +6054,16 @@ namespace ngp {
 			}
 		}
 	}
+	__device__ float gaussianWeight(float distance, float sigma) {
+		return expf(-(distance * distance) / (2 * sigma * sigma));
+	}
 	__device__ vec3 getVertex(int x, int y, int z, Vertex d_vertices[]) {//바뀐 좌표를 구하는 함수
 		// CUDA device variable to store the mode
 
 		vec3 pos(x, y, z);
 
 		if (device_mode == 0) { //Normal
-			return pos;
+			return pos - vec3(0, 10, 20);
 		}
 
 		else if (device_mode == 1) { //PBD
@@ -6209,7 +6080,7 @@ namespace ngp {
 			int iz = int(pbd_pos.z); // 0~9
 			float wz = pbd_pos.z - iz; //
 
-			vec3 origin_pos0(d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz].px, d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz].py, d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz].pz);
+			vec3 origin_pos0(d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_X)+iz].px, d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz].py, d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz].pz);
 			vec3 origin_pos1(d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz + 1].px, d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz + 1].py, d_vertices[ix * (PBD_Z) * (PBD_Y)+iy * (PBD_Z)+iz + 1].pz);
 			vec3 origin_pos2(d_vertices[ix * (PBD_Z) * (PBD_Y)+(iy + 1) * (PBD_Z)+iz].px, d_vertices[ix * (PBD_Z) * (PBD_Y)+(iy + 1) * (PBD_Z)+iz].py, d_vertices[ix * (PBD_Z) * (PBD_Y)+(iy + 1) * (PBD_Z)+iz].pz);
 			vec3 origin_pos3(d_vertices[ix * (PBD_Z) * (PBD_Y)+(iy + 1) * (PBD_Z)+iz + 1].px, d_vertices[ix * (PBD_Z) * (PBD_Y)+(iy + 1) * (PBD_Z)+iz + 1].py, d_vertices[ix * (PBD_Z) * (PBD_Y)+(iy + 1) * (PBD_Z)+iz + 1].pz);
@@ -6243,7 +6114,7 @@ namespace ngp {
 
 		else if (device_mode == 2) { //Wave
 			float delta = sinf(float(z * 0.03f + mytime[0] * 0.1f));
-			vec3 dis = vec3(floor(delta * 20), 0, 0);
+			vec3 dis = vec3(0, floor(delta * 20), 0);
 			vec3 retval = pos + dis; // 258 258 152
 			//printf("%d\n", ttime);
 			//256, 256, 150
@@ -6255,7 +6126,7 @@ namespace ngp {
 		}
 
 		else if (device_mode == 3) { //Bubble
-			vec3 center(x / 2, y / 2, z / 2);
+			vec3 center(200 - (x / 2), 200 - (y / 2), 100 - (z / 2));
 			vec3 dis = pos - center; /// 1 1 1
 			float len = length(dis);
 			float size = (sinf(mytime[0] * 0.05f)) * 40; // -1+1;
@@ -6263,11 +6134,14 @@ namespace ngp {
 			//float size = sinf(10 * 0.05f) * 40; // -1+1;
 			dis = dis * ((len + size) / len);
 			vec3 retval = center + dis;
+			retval.x = floor(retval.x);
+			retval.y = floor(retval.y);
+			retval.z = floor(retval.z);
 			return retval;
 		}
 
 		else if (device_mode == 4) { //Twist
-			vec3 center(x / 2, y / 2, z / 2);
+			vec3 center(200 - (x / 2), 200 - (y / 2), 100 - (z / 2));
 			vec3 dis = pos - center; /// 1 1 1
 			dis.z = 0;
 			float theta = sinf(mytime[0] * 0.1f) * (pos.z - center.z) * 0.01f * 1.3; // mytime[0] + pos.m[2]
@@ -6281,23 +6155,50 @@ namespace ngp {
 			retval.x = center.x + dx;
 			retval.y = center.y + dy;
 			retval.z = pos.z;
+			retval.x = floor(retval.x);
+			retval.y = floor(retval.y);
+			retval.z = floor(retval.z);
 			return retval;
 		}
-		else if (device_mode == 5) { //Picking
+
+		else if (device_mode == 5) { // Picking
 			int deformIndexX = IndexPosDefrom % 256;
 			int deformIndexY = (IndexPosDefrom / 256) % 256;
 			int deformIndexZ = IndexPosDefrom / (256 * 256);
+			vec3 deform(deformIndexX, deformIndexY, deformIndexZ);
+			const float radiusX = 10.0f;
+			const float radiusY = 10.0f;
+			const float radiusZ = 30.0f;
+			//const float sigma = radius / 2.0f; // 가우시안 분포의 표준편차
+			float distance = length(deform - pos);
+			vec3 direction = deformDir2;
+			/*if (((pos.x - deformIndexX) * (pos.x - deformIndexX)) / (radiusX * radiusX) +
+				((pos.y - deformIndexY) * (pos.y - deformIndexY)) / (radiusY * radiusY) +
+				((pos.z - deformIndexZ) * (pos.z - deformIndexZ)) / (radiusZ * radiusZ) <= 1.0 &&
+				deformIndexX != 0 && deformIndexY != 0 && deformIndexZ != 0) {*/
+			if (pos.x <= deformIndexX + 10 && pos.x >= deformIndexX - 10 && pos.y <= deformIndexY + 10 && pos.y >= deformIndexY - 10 && pos.z <= deformIndexZ + 30 && pos.z >= deformIndexZ - 30 && deformIndexX != 0 && deformIndexY != 0 && deformIndexZ != 0) {
 
-
-			if (pos.x <= deformIndexX + 3 && pos.x >= deformIndexX - 3 && pos.y <= deformIndexY + 3 && pos.y >= deformIndexY - 3 && pos.z <= deformIndexZ + 15 && pos.z >= deformIndexZ - 15 && deformIndexX != 0 && deformIndexY != 0 && deformIndexZ != 0) {
-
+				//float influence = expf(-powf(distance / sigma, 2)); // 가우시안 함수 적용
+				//vec3 dis = vec3(0, 0, 10 + (influence * 20.0f));//vec3(0, 0, floor(delta * 20)); // z 축 방향으로 변환 적용    
+				float length2 = 1 / (distance + 1);
 				//float delta = (z +20);
-				vec3 dis = vec3(0, 0, 5);
+				//vec3 dis = vec3(direction.x * (5 * length2), direction.y * (5 * length2),(50 * length2));
+				//vec3 dis = vec3(direction.x * (0.7 + 180 * length2) - 10, direction.y * (0.7 + 180 * length2), direction.z * (0.7 + 180 * length2) - 10);
+				vec3 dis = vec3(direction.x * (20 * length2) - 10, direction.y * (20 * length2), direction.z * (45 * length2) - 10);
+				//dis.x = direction.x; 
+				//dis.y = direction.y;
+				//dis.z = direction.z ;
+				//*(0.7 + 500 * length2);
+
 				vec3 retval = pos + dis;
 
+				retval.x = int(retval.x);
+				retval.y = int(retval.y);
+				retval.z = int(retval.z);
 				return retval;
+
 			}
-			return pos;
+			return pos - vec3(10, 0, 10);
 		}
 	}
 
@@ -6364,7 +6265,18 @@ namespace ngp {
 		ty = (threadIdx.x / 4) % 4;
 		tx = threadIdx.x % 4;
 
-
+		input[IndexPosDefrom - 1].x = 255.0;
+		input[IndexPosDefrom - 1].y = 0.0;
+		input[IndexPosDefrom - 1].z = 0.0;
+		input[IndexPosDefrom - 1].w = 1.0;
+		input[IndexPosDefrom].x = 255.0;
+		input[IndexPosDefrom].y = 0.0;
+		input[IndexPosDefrom].z = 0.0;
+		input[IndexPosDefrom].w = 1.0;
+		input[IndexPosDefrom + 1].x = 255.0;
+		input[IndexPosDefrom + 1].y = 0.0;
+		input[IndexPosDefrom + 1].z = 0.0;
+		input[IndexPosDefrom + 1].w = 1.0;
 		int forDebug = 0; // (x == 1 && y == 1 && z == 0) ? 1 : 0;
 		SampleTetrahedron(buf[tz][ty][tx], buf[tz + 1][ty][tx], buf[tz + 1][ty][tx + 1], buf[tz + 1][ty + 1][tx], input, voltexObj, forDebug);//사면체를 생성
 		SampleTetrahedron(buf[tz + 1][ty + 1][tx], buf[tz + 1][ty + 1][tx + 1], buf[tz + 1][ty][tx + 1], buf[tz][ty + 1][tx + 1], input, voltexObj, forDebug);
@@ -6377,40 +6289,49 @@ namespace ngp {
 
 	}
 
-	__global__ void raycastKernel(vec3 rayOrigin, vec3 rayDirection, float4* volume) {
+	__global__ void raycastKernel(vec3 rayOrigin, vec3 rayDirection, float4* volume, vec3 deformDir) {
 		//int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
 		// Step size for ray marching
 		float step = 0.1f;
 		float t = 0.0f;
-
+		vec3 dir = normalize(rayDirection - rayOrigin);
+		deformDir2 = deformDir;
 		// Traverse through the volume along the ray
 		for (int i = 0; i < 10000; ++i) {
 			vec3 currentPos;
 
+			currentPos.x = rayOrigin.x + t * dir.x;
+			currentPos.y = rayOrigin.y + t * dir.y;
+			currentPos.z = rayOrigin.z + t * dir.z;
+			int z = floor(currentPos.z * 64 + 96);
+			int x = floor(currentPos.x * 64 + 96);
+			int y = floor(currentPos.y * 64 + 96);
 
-			currentPos.x = rayOrigin.x + t * rayDirection.x;
-			currentPos.y = rayOrigin.y + t * rayDirection.y;
-			currentPos.z = rayOrigin.z + t * rayDirection.z;
-			int z = currentPos.z * 64 + 112;
-			int x = currentPos.x * 64 + 112;
-			int y = currentPos.y * 64 + 112;
 			if (x >= 0 && x < 256 && y >= 0 && y < 256 && z >= 0 && z < 256) {
 				int index = x + 256 * (y + 256 * z);
 				float alpha = volume[index].w;  // Use alpha value
 
-				if (alpha > 0) {  // Assuming volumeData contains alpha values
+				if (alpha > 0.1) {  // Assuming volumeData contains alpha values
 					//int x = (index % 256) * 2;
 					//int y = ((index % 256) / 256) * 2;
 					//int z = (index / (256 * 256)) * 2;
 					IndexPosDefrom = index;//x + 256 * (y + 256 * z);
+
+					int deformIndexX = IndexPosDefrom % 256;
+					int deformIndexY = (IndexPosDefrom / 256) % 256;
+					int deformIndexZ = IndexPosDefrom / (256 * 256);
+
+
+					//printf("Deform Volume Index %d, %d, %d\n", deformIndexX, deformIndexY, deformIndexZ);
+
+
 					return;
 				}
 			}
 
 			t += step;
 		}
-
 	}
 	__global__ void brightenImageKernel(unsigned char* outImage, cudaTextureObject_t voltexObj, float zoom)
 	{
@@ -6734,6 +6655,7 @@ namespace ngp {
 			return cudaStatus;
 		}
 
+
 		cudaStatus = cudaMemcpy(Testbed::volume, Testbed::rgba.data(), 256 * 256 * 256 * sizeof(float4), cudaMemcpyDeviceToHost);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMemcpy failed!6");
@@ -6785,11 +6707,11 @@ namespace ngp {
 		//}
 		return cudaStatus;
 	}
-
+	static float t = 0;
 	int Testbed::cudamain(float eye[3])
 	{
-		static float t = 0;
-		t += 1.0;//시간측정
+		//static float t = 0;
+		t += 1;//시간측정
 		vecsm heye(eye[0], eye[1], eye[2]);//host 변수
 
 		cudaMemcpyToSymbol(mytime, &t, sizeof(float));
@@ -6882,10 +6804,8 @@ namespace ngp {
 
 	vec2 windowToTextureCoord(const vec2& windowCoord) {
 
-		float x = (2.0f * (windowCoord.x)) / 512 - 1.0f;
-		x -= 1;
+		float x = (2.0f * (windowCoord.x)) / 512 - 1.0f;//-1~1->0~1
 		float y = 1.0f - (2.0f * (windowCoord.y)) / 512;
-		y += 1;
 		if (-1.0 > x && 1.0 < x || -1.0 > y && 1.0 < y) {
 			x = 0.0f;
 			y = 0.0f;
@@ -6894,7 +6814,10 @@ namespace ngp {
 	}
 
 
-	void Testbed::getWorldCoordinates(GLFWwindow* window, double x, double y, float depth, vec3& outCoords, float cameraPosXYZ[3]) {
+	void Testbed::getWorldCoordinates(float mouseX, float mouseY, float depth, vec3& rayDir, vec3& rayO, float cameraPosXYZ[3], float zoom) {
+
+		float x = (2.0f * (mouseX)) / 512 - 1.0f;//-1~1->0~1
+		float y = 1.0f - (2.0f * (mouseY)) / 512;
 
 		// 뷰 행렬 생성 (예: 단순 카메라 변환)
 		glm::vec3 cameraPos(cameraPosXYZ[0], cameraPosXYZ[1], cameraPosXYZ[2]); // 카메라 위치 점 o
@@ -6903,15 +6826,28 @@ namespace ngp {
 		glm::vec3 cameraUp(0.0f, 1.0f, 0.0f); // 카메라의 위쪽 방향
 		glm::vec3 cameraDir = normalize(cameraTarget - cameraPos);
 		//uvw
-		glm::vec3 cameraRight = normalize(cross(cameraDir, cameraUp));
-		glm::vec3 cameraUpNew = cross(cameraRight, cameraDir);
+		//glm::vec3 cameraRight = normalize(cross(cameraDir, cameraUp));
+		//glm::vec3 cameraUpNew = cross(cameraRight, cameraDir);
+		//glm::mat4 projection = glm::orthoRH_NO(-1.0f, 1.0f, -1.0f, 1.0f, 0.1f, 1000.0f);
 
-		glm::mat4 projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f);
+		 // 확대/축소를 반영한 투영 행렬
+		float left = -4.0f * zoom;
+		float right = 0.0f * zoom;
+		float bottom = 0.0f * zoom;
+		float top = 4.0f * zoom;
+		glm::mat4 projection = glm::orthoRH_ZO(left, right, bottom, top, 0.1f, 1000.0f);
+		//glm::mat4 projection = glm::orthoRH_ZO(-4.0f, 0.0f, 0.0f, 4.0f, 0.1f, 100.0f);
+
+		//glm::mat4 projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f);
 		//glm::perspective(glm::radians(fov), aspect, zNear, zFar);// -1~1 사이범위를 
-		glm::mat4 view = glm::lookAt(cameraPos, cameraDir, cameraUp);//카메라 행렬
+		glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraDir, cameraUp);//카메라 행렬
+		// 모델 행렬 (예: 단순 회전)
+		glm::mat4 model = glm::mat4(1.0f); // 단위 행렬로 초기화
+		// 모델 변환 추가 (예: 45도 y축 회전)
+		//model = glm::rotate(model, glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // 필요한 변환을 여기에 추가
 
 		//glm::mat4 model = glm::rotate(model, glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f));//world 관점
-		/*printf(" cal NDC coords : %lf , %lf \n", x, y);*/
+
 
 		glm::vec4 ndcCoords = glm::vec4(x, y, -1.0f, 1.0f);//방향
 
@@ -6919,24 +6855,23 @@ namespace ngp {
 
 		glm::mat4 invP = inverse(projection);
 		glm::mat4 invV = inverse(view);
-
+		glm::mat4 invM = inverse(model);
 		glm::vec4 worldCoords = invP * ndcCoords;
 		//worldCoords = glm::vec4(x, y, 0.0f, 0.0f);
 		worldCoords = glm::vec4(worldCoords.x, worldCoords.y, -1.0f, 0.0f);
 		worldCoords = invV * worldCoords;
+		worldCoords = invM * worldCoords;
+		glm::vec4 rayOrigin = invM * glm::vec4(cameraPosXYZ[0], cameraPosXYZ[1], cameraPosXYZ[2], 1.0f);
 
-
-		/*if (worldCoords.w != 0.0f) {
-			worldCoords /= worldCoords.w;
-		}*/
-
-		glm::vec3 dir = glm::vec3(worldCoords) - cameraPos;
+		glm::vec3 rayD = glm::vec3(worldCoords);// - glm::vec3(rayOrigin);
+		printf(" cal NDC coords : %f , %f \n", x, y);
 
 		printf(" camera pos  : %f   %f   %f   \n", cameraPos.x, cameraPos.y, cameraPos.z);
 
 		printf(" cal worldDirCoords coords : %f , %f , %f\n", worldCoords.x, worldCoords.y, worldCoords.z);
 
-		outCoords = vec3(dir.x, dir.y, dir.z);
+		rayO = vec3(rayOrigin.x, rayOrigin.y, rayOrigin.z);
+		rayDir = vec3(rayD.x, rayD.y, rayD.z);
 	}
 
 
@@ -6952,32 +6887,41 @@ namespace ngp {
 		}
 		if (button == GLFW_MOUSE_BUTTON_RIGHT) {
 			if (action == GLFW_PRESS) {
-				//mousePressed = true;
-				double WindowX, WindowY;
 				//1
-				glfwGetCursorPos(window, &WindowX, &WindowY);
-				std::cout << "Window Coordinates: " << WindowX << ", " << WindowY << std::endl;
+				glfwGetCursorPos(window, &initialX, &initialY);
+				std::cout << "first Window Coordinates: " << initialX << ", " << initialY << std::endl;
 
 
-				vec2 windowCoord(WindowX, WindowY);
-				vec2 textureCoord = windowToTextureCoord(windowCoord);
-				std::cout << "NDC Texture Coordinates: " << textureCoord.x << ", " << textureCoord.y << std::endl;
 
-				vec3 raystDir;
+				Testbed::getWorldCoordinates(initialX, initialY, 0.0f, firstRayDir, firstRayO, eye, zoom);
 
-				Testbed::getWorldCoordinates(window, textureCoord.x, textureCoord.y, 0.0f, raystDir, eye);
 
-				cudaError_t err;
-				vec3 rayO(eye[0], eye[1], eye[2]);
 
-				dim3 threadsPerBlock(256);
-				dim3 numBlocks((VOLX * VOLY * VOLZ + threadsPerBlock.x - 1) / threadsPerBlock.x);
-				raystDir = normalize(raystDir);
-				raycastKernel << <numBlocks, threadsPerBlock >> > (rayO, raystDir, dev_input);
+				isDragging = true;
+
 
 			}
 			else if (action == GLFW_RELEASE) {
-				//mousePressed = false;
+				if (isDragging) {
+					glfwGetCursorPos(window, &finalX, &finalY);
+					std::cout << "final Window Coordinates: " << finalX << ", " << finalY << std::endl;
+
+					Testbed::getWorldCoordinates(finalX, finalY, 0.0f, finalRayDir, finalRayO, eye, zoom);
+
+					deformDir = finalRayDir - firstRayDir;
+					vec3 dir = normalize(deformDir);
+
+					dim3 threadsPerBlock(256);
+					dim3 numBlocks((VOLX * VOLY * VOLZ + threadsPerBlock.x - 1) / threadsPerBlock.x);
+					raycastKernel << <numBlocks, threadsPerBlock >> > (firstRayO, firstRayDir, dev_input, dir);
+					std::cout << "deformDir: " << deformDir.x << ", " << deformDir.y << ", " << deformDir.z << std::endl;
+					int deformIndexX = IndexPosDefrom % 256;
+					int deformIndexY = (IndexPosDefrom / 256) % 256;
+					int deformIndexZ = IndexPosDefrom / (256 * 256);
+					RaystartDot = firstRayO;
+					RayEnddot = vec3((deformIndexX - 96) / 64, (deformIndexY - 96) / 64, (deformIndexZ - 96) / 64);
+
+				}
 			}
 		}
 	}
@@ -7013,12 +6957,7 @@ namespace ngp {
 		if (zoom < 0.1f) zoom = 0.1f; // 최소 줌 레벨 설정
 
 	}
-	void Testbed::updateCameraPosition() {
-		float radius = zoom * 500.0f; // 초기 거리 값을 사용하여 조정
-		eye[0] = radius * cos(pitch * PI / 180.0) * cos(yaw * PI / 180.0);
-		eye[1] = radius * sin(pitch * PI / 180.0);
-		eye[2] = radius * cos(pitch * PI / 180.0) * sin(yaw * PI / 180.0);
-	}
+
 
 	void Testbed::openPBDWindow(int option) {//지금 다른 파일에서 (testbed.cu) 파라미터가 vec4로 정의되어있는 부분이 있음
 
@@ -7067,8 +7006,11 @@ namespace ngp {
 			// 이벤트 처리
 			glfwPollEvents();
 
+
 			//float eye[3] = { 200,200,500 };
+
 			if (option == 1) {
+				//eye[0] = sin(t + 0.1f) * 128 + 128;
 				Update();
 				QueryPerformanceFrequency(&Frequency);
 				QueryPerformanceCounter(&BeginTime);
@@ -7156,36 +7098,67 @@ namespace ngp {
 			//printf(" offset : %d\n", offset);
 			//post_process_volume(rgba.data() + offset, local_batch_size);
 		}
-		//std::vector<vec4> rgba_cpu;
-		//rgba_cpu.resize(rgba.size());
-		//rgba.copy_to_host(rgba_cpu);
+
+
 		//float maxr = 0;
 		//float maxg = 0;
 		//float maxb = 0;
 		//float maxa = 0;
-		//const int volume_dim = 256;
+		//
+		//
+		//int margin_x = 125;
+		//int margin_y = 140;
+		//int margin_z = 135;
+		//
+		//int volume_dim = 256;
+		//size_t total_size = volume_dim * volume_dim * volume_dim;
+		//size_t byte_size = total_size * sizeof(vec4);
+		//std::vector<vec4> rgba_cpu(total_size);
+		//
+		//rgba_cpu.resize(rgba.size());
+		//rgba.copy_to_host(rgba_cpu);
 		//const int margin = 70; // 가장자리에서 보존할 범위
-		//for (size_t i = 0; i < rgba_cpu.size(); ++i) {
-		//	// 볼륨 데이터의 좌표를 계산
-		//	int ix = i % volume_dim;
-		//	int iy = (i / volume_dim) % volume_dim;
-		//	int iz = i / (volume_dim * volume_dim);
-
-		//	maxr = __max(maxr, rgba_cpu[i].x);
-		//	maxg = __max(maxg, rgba_cpu[i].y);
-		//	maxb = __max(maxb, rgba_cpu[i].z);
-		//	maxa = __max(maxa, rgba_cpu[i].w);
-
-		//	// 중심에서 margin 범위 이내에 있는 부분은 보존
-		//	if (ix >= volume_dim / 2 - margin && ix < volume_dim / 2 + margin &&
-		//		iy >= volume_dim / 2 - margin && iy < volume_dim / 2 + margin + 20 &&
-		//		iz >= volume_dim / 2 - margin && iz < volume_dim / 2 + margin) {
-		//		continue; // 보존할 부분은 건너뜀
-		//	}
-
-		//	// 나머지 가장자리 부분을 투명하게 처리 (alpha 값을 0으로 설정)
-		//	rgba_cpu[i].w = 0.0f;
-		//}
+		//	// 중심 좌표
+		////int cx = volume_dim / 2;
+		////int cy = volume_dim / 2;
+		////int cz = volume_dim / 2;
+		////for (size_t i = 0; i < total_size; ++i) {
+		////	int ix = i % volume_dim;
+		////	int iy = (i / volume_dim) % volume_dim;
+		////	int iz = i / (volume_dim * volume_dim);
+		////
+		////	// 타원 방정식에 따른 내부 점 체크
+		////	float dx = (ix - cx) / static_cast<float>(margin_x);
+		////	float dy = (iy - cy) / static_cast<float>(margin_y);
+		////	float dz = (iz - cz) / static_cast<float>(margin_z);
+		////
+		////	if (dx * dx + dy * dy + dz * dz <= 1.0f) {
+		////		continue;
+		////	}
+		////
+		////	rgba_cpu[i].w = 0.0f;
+		////}
+		////for (size_t i = 0; i < rgba_cpu.size(); ++i) {
+		////	// 볼륨 데이터의 좌표를 계산
+		////	int ix = i % volume_dim;
+		////	int iy = (i / volume_dim) % volume_dim;
+		////	int iz = i / (volume_dim * volume_dim);
+		//
+		////	maxr = __max(maxr, rgba_cpu[i].x);
+		////	maxg = __max(maxg, rgba_cpu[i].y);
+		////	maxb = __max(maxb, rgba_cpu[i].z);
+		////	maxa = __max(maxa, rgba_cpu[i].w);
+		//
+		////	// 중심에서 margin 범위 이내에 있는 부분은 보존
+		////	if (ix >= volume_dim / 2 - margin && ix < volume_dim / 2 + margin &&
+		////		iy >= volume_dim / 2 - margin && iy < volume_dim / 2 + margin + 20 &&
+		////		iz >= volume_dim / 2 - margin && iz < volume_dim / 2 + margin) {
+		////		continue; // 보존할 부분은 건너뜀
+		////	}
+		//
+		////	// 나머지 가장자리 부분을 투명하게 처리 (alpha 값을 0으로 설정)
+		////	rgba_cpu[i].w = 0.0f;
+		////}
 		//const float density_threshold =5; // 임의의 값으로 설정
 		//printf(" density_threshold : %f\n", density_threshold);
 		//for (uint32_t i = 0; i < rgba_cpu.size(); ++i) {
@@ -7194,27 +7167,27 @@ namespace ngp {
 		//		rgba_cpu[i].w = 0.0f; // 투명 처리 (또는 다른 처리 방법을 선택)
 		//	}
 		//}
-
+		//
 		//printf("fun get_rgba_on_grid max r:!! %f !! \n", maxr);
 		//printf("fun get_rgba_on_grid max g:!! %f !! \n", maxg);
 		//printf("fun get_rgba_on_grid max b:!! %f !! \n", maxb);
 		//printf("fun get_rgba_on_grid max a:!! %f !! \n", maxa);
-
+		//
 		//vec4* rgbaData = rgba_cpu.data();
 		//const int dataSize = 256 * 256 * 256;
-
+		//
 		//// Open a binary file for writing
-		//std::ofstream outFile("fox_rgba_data.den", std::ios::binary);
-
+		//std::ofstream outFile("sozip.den", std::ios::binary);
+		//
 		//// Check if the file is opened successfully
 		//if (!outFile.is_open()) {
 		//	std::cerr << "Failed to open the file for writing." << std::endl;
 		//	return 1;
 		//}
-
+		//
 		//// Write the data to the file
 		//outFile.write(reinterpret_cast<char*>(rgbaData), dataSize * sizeof(float) * 4);
-
+		//
 		//// Close the file
 		//outFile.close();
 		return rgba;
