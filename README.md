@@ -1,45 +1,70 @@
-# Instant Neural Graphics Primitives ![](https://github.com/NVlabs/instant-ngp/workflows/CI/badge.svg)
-
-<img src="docs/assets_readme/fox.gif" height="342"/> <img src="docs/assets_readme/robot5.gif" height="342"/>
-
-Ever wanted to train a NeRF model of a fox in under 5 seconds? Or fly around a scene captured from photos of a factory robot? Of course you have!
-
-Here you will find an implementation of four __neural graphics primitives__, being neural radiance fields (NeRF), signed distance functions (SDFs), neural images, and neural volumes.
-In each case, we train and render a MLP with multiresolution hash input encoding using the [__tiny-cuda-nn__](https://github.com/NVlabs/tiny-cuda-nn) framework.
-
-> __Instant Neural Graphics Primitives with a Multiresolution Hash Encoding__  
-> [Thomas Müller](https://tom94.net), [Alex Evans](https://research.nvidia.com/person/alex-evans), [Christoph Schied](https://research.nvidia.com/person/christoph-schied), [Alexander Keller](https://research.nvidia.com/person/alex-keller)  
-> _ACM Transactions on Graphics (__SIGGRAPH__), July 2022_  
-> __[Project page](https://nvlabs.github.io/instant-ngp)&nbsp;/ [Paper](https://nvlabs.github.io/instant-ngp/assets/mueller2022instant.pdf)&nbsp;/ [Video](https://nvlabs.github.io/instant-ngp/assets/mueller2022instant.mp4)&nbsp;/ [Presentation](https://tom94.net/data/publications/mueller22instant/mueller22instant-gtc.mp4)&nbsp;/ [Real-Time Live](https://tom94.net/data/publications/mueller22instant/mueller22instant-rtl.mp4)&nbsp;/ [BibTeX](https://nvlabs.github.io/instant-ngp/assets/mueller2022instant.bib)__
-
-For business inquiries, please submit the [NVIDIA research licensing form](https://www.nvidia.com/en-us/research/inquiries/).
+# NeuralDynaRender
+> 맞춤형 3D 시각화를 위한 NeRF, 볼륨 렌더링, 및 PBD 기술 융합과 데이터 출력 및 변형
 
 
-## Installation
+## 설명
 
-If you have Windows, download one of the following releases corresponding to your graphics card and extract it. Then, start `instant-ngp.exe`.
+Neural Dyna Render는 실시간 볼륨 렌더링을 위한 도구이다. 이 프로젝트는 Neural Radiance Fields 기술을 활용해 2D 데이터를 3D 볼륨으로 변환, Parallel Resampling과 Raycasting 기술을 활용하여 하고, Position Based Dynamics(PBD) 물리 엔진을 통해 볼륨 데이터를 변형한다.
 
-- [**RTX 3000 & 4000 series, RTX A4000&ndash;A6000**, and other Ampere & Ada cards](https://github.com/NVlabs/instant-ngp/releases/download/continuous/Instant-NGP-for-RTX-3000-and-4000.zip)
-- [**RTX 2000 series, Titan RTX, Quadro RTX 4000&ndash;8000**, and other Turing cards](https://github.com/NVlabs/instant-ngp/releases/download/continuous/Instant-NGP-for-RTX-2000.zip)
-- [**GTX 1000 series, Titan Xp, Quadro P1000&ndash;P6000**, and other Pascal cards](https://github.com/NVlabs/instant-ngp/releases/download/continuous/Instant-NGP-for-GTX-1000.zip)
+### 주요 기능
+- 렌더링
 
-Keep reading for a guided tour of the application or, if you are interested in creating your own NeRF, watch [the video tutorial](https://www.youtube.com/watch?v=3TWxO1PftMc) or read the [written instructions](docs/nerf_dataset_tips.md).
-
-If you use Linux, or want the [developer Python bindings](https://github.com/NVlabs/instant-ngp#python-bindings), or if your GPU is not listed above (e.g. Hopper, Volta, or Maxwell generations), you need to [build __instant-ngp__ yourself](https://github.com/NVlabs/instant-ngp#building-instant-ngp-windows--linux).
+기존의 ngp(neural graphics primitives)를 활용한 NeRF(Neural radiance fields)에서 제공하는 렌더링이 아닌, 자체적인 렌더링 모델을 제작하여 3D로 변환된 데이터를 출력한다. 사용자는 4가지 옵션 중에 하나를 선택하여 해당 옵션이 적용된 변형을 확인할 수 있다.
 
 
-## Usage
+<table>
+    <tbody>
+    	<tr>
+        	<th style="text-align: center">Normal</th>
+            <th style="text-align: center"><img src="https://github.com/GYEMOim/NeuralDynaRender/assets/100848728/b408bd79-bae1-4046-a8bb-ddb2a8979234" /></th>
+        </tr>
+		<tr>
+        	<th style="text-align: center">Wave</th>
+            <th style="text-align: center"><img src="https://github.com/GYEMOim/NeuralDynaRender/assets/100848728/5cd10c07-9aaa-49b5-8b67-42207be6d103" /></th>
+        </tr>
+		<tr>
+        	<th style="text-align: center">Twist</th>
+            <th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/After02.jpg" alt="After" style="zoom:80%;" /></th>
+        </tr>
+		<tr>
+        	<th style="text-align: center">Bubble</th>
+            <th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/After02.jpg" alt="After" style="zoom:80%;" /></th>
+        </tr>
+    </tbody>
+</table>
 
-<img src="docs/assets_readme/testbed.png" width="100%"/>
 
-__instant-ngp__ comes with an interactive GUI that includes many features:
-- [comprehensive controls](https://github.com/NVlabs/instant-ngp#keyboard-shortcuts-and-recommended-controls) for interactively exploring neural graphics primitives,
-- [VR mode](https://github.com/NVlabs/instant-ngp#vr-controls) for viewing neural graphics primitives through a virtual-reality headset,
-- saving and loading "snapshots" so you can share your graphics primitives on the internet,
-- a camera path editor to create videos,
-- `NeRF->Mesh` and `SDF->Mesh` conversion,
-- camera pose and lens optimization,
-- and many more.
+- PBD
+
+PBD란  position based dynamics의 약자로 위치 기반 물리엔진를 의미한다. 3D 데이터는 2D 데이터보다 좀 더 입체감을 주지만 정적 데이터로서의 몰입감은 한계를 가질 수밖에 없다. 이때, PBD를 사용하여 현실적인 물리 효과를 데이터에 적용하여 사용자에게 보다 현실적인 몰입감을 제공할 수 있다.
+
+<table>
+    <tbody>
+    	<tr>
+            <th style="text-align: center"><img src="https://github.com/GYEMOim/NeuralDynaRender/assets/100848728/96eb5254-4ba1-40d6-a10f-d0858deeecc7" /></th>
+        </tr>
+    </tbody>
+</table>
+
+
+-픽킹
+
+픽킹은 데이터에 직접적인 변형을 주는 부분으로 마우스 왼쪽 버튼을 클릭시 붉은 점이 생길 텐데 그 상태로 드래그하면 원하는 변형이 데이터 변형이 이뤄진다.
+
+<table>
+    <thead>
+        <tr>
+            <th style="text-align: center">Before</th>
+        	<th style="text-align: center">After</th>
+        </tr>
+    </thead>
+    <tbody>
+    	<tr>
+        	<th style="text-align: center"><img src="https://github.com/GYEMOim/NeuralDynaRender/assets/100848728/89b1170d-9648-4a83-b717-fe15f97a9b96" alt="Before" style="zoom:80%;" /></th>
+            <th style="text-align: center"><img src="https://github.com/GYEMOim/NeuralDynaRender/assets/100848728/44e8560e-569b-49a0-a140-0bf6f428b84b" alt="After" style="zoom:80%;" /></th>
+        </tr>
+    </tbody>
+</table>
 
 
 ### NeRF fox
